@@ -12,7 +12,7 @@ import sys
 default_mqtt_url = "mqtt.meshtastic.org"
 default_mqtt_password = "large4cats"
 default_mqtt_user = "meshdev"
-default_mqtt_topic = ["msh/US/#", "msh/US868/#"]
+default_mqtt_topic = ["msh/US/#", "msh/EU_868/#"]
 default_mqtt_port = 1883
 default_encryption_key = "1PG7OiApB1nwvP+rz05pAQ=="
 mqtt_keepalive = 60
