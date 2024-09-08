@@ -1,128 +1,137 @@
-#!/usr/bin/env python3
-
-import paho.mqtt.client as mqtt
 from meshtastic import mesh_pb2, mqtt_pb2, portnums_pb2, telemetry_pb2
-
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
+from google.protobuf.json_format import MessageToDict
+import paho.mqtt.client as mqtt
 import base64
 import random
+import argparse
+import json
 
-from plyer import notification
-
-
-# Default settings
-MQTT_BROKER = "mqtt.meshtastic.org"
-MQTT_PORT = 1883
-MQTT_USERNAME = "meshdev"
-MQTT_PASSWORD = "large4cats"
-root_topic = "msh/ANZ/2/c/"
-channel = "LongFast"
-key = "1PG7OiApB1nwvP+rz05pAQ=="
-
-padded_key = key.ljust(len(key) + ((4 - (len(key) % 4)) % 4), '=')
-replaced_key = padded_key.replace('-', '+').replace('_', '/')
-key = replaced_key
-
-broadcast_id = 4294967295
-
-# Convert hex to int and remove '!'
-node_number = int('abcd', 16)
-
-def process_message(mp, text_payload, is_encrypted):
-
-    text = {
-        "message": text_payload,
-        "from": getattr(mp, "from"),
-        "id": getattr(mp, "id"),
-        "to": getattr(mp, "to")
-    }
-
-    notification.notify(
-    title = f"{getattr(mp, 'from')}",
-    message = f"{text_payload}",
-    timeout = 10
-    )
-    print(text)
+default_mqtt_url = "mqtt.meshtastic.org"
+default_mqtt_password = "large4cats"
+default_mqtt_user = "meshdev"
+default_mqtt_topic = ["msh/US/#","msh/US868/#"]
+default_mqtt_port = 1883
+default_encryption_key = "1PG7OiApB1nwvP+rz05pAQ=="
+mqtt_keepalive = 60
 
 def decode_encrypted(message_packet):
     try:
-        key_bytes = base64.b64decode(key.encode('ascii'))
-      
+        key_bytes = base64.b64decode(args.key.encode("ascii"))
         nonce_packet_id = getattr(message_packet, "id").to_bytes(8, "little")
         nonce_from_node = getattr(message_packet, "from").to_bytes(8, "little")
         nonce = nonce_packet_id + nonce_from_node
 
-        cipher = Cipher(algorithms.AES(key_bytes), modes.CTR(nonce), backend=default_backend())
+        cipher = Cipher(
+            algorithms.AES(key_bytes), modes.CTR(nonce), backend=default_backend()
+        )
         decryptor = cipher.decryptor()
-        decrypted_bytes = decryptor.update(getattr(message_packet, "encrypted")) + decryptor.finalize()
+        decrypted_bytes = (
+            decryptor.update(getattr(message_packet, "encrypted"))
+            + decryptor.finalize()
+        )
 
         data = mesh_pb2.Data()
         data.ParseFromString(decrypted_bytes)
         message_packet.decoded.CopyFrom(data)
-        
-        if message_packet.decoded.portnum == portnums_pb2.TEXT_MESSAGE_APP:
-            text_payload = message_packet.decoded.payload.decode("utf-8")
-            is_encrypted = True
-            process_message(message_packet, text_payload, is_encrypted)
-            print(f"{text_payload}")
 
+        if message_packet.decoded.portnum == portnums_pb2.TEXT_MESSAGE_APP:
+            payload = message_packet.decoded.payload.decode("utf-8")
+            port = "TEXT_MESSAGE_APP"
 
         elif message_packet.decoded.portnum == portnums_pb2.NODEINFO_APP:
-                info = mesh_pb2.User()
-                info.ParseFromString(message_packet.decoded.payload)
-                print(info)
-                # notification.notify(
-                # title = "Meshtastic",
-                # message = f"{info}",
-                # timeout = 10
-                # )
+            pb = mesh_pb2.User()
+            pb.ParseFromString(message_packet.decoded.payload)
+            payload = MessageToDict(pb,preserving_proto_field_name=True)
+            port = "NODEINFO_APP"
+
         elif message_packet.decoded.portnum == portnums_pb2.POSITION_APP:
-            pos = mesh_pb2.Position()
-            pos.ParseFromString(message_packet.decoded.payload)
-            print(pos)
+            pb = mesh_pb2.Position()
+            pb.ParseFromString(message_packet.decoded.payload)
+            payload = MessageToDict(pb,preserving_proto_field_name=True)
+            port = "POSITION_APP"
 
         elif message_packet.decoded.portnum == portnums_pb2.TELEMETRY_APP:
-            env = telemetry_pb2.Telemetry()
-            env.ParseFromString(message_packet.decoded.payload)
-            print(env)
+            pb = telemetry_pb2.Telemetry()
+            pb.ParseFromString(message_packet.decoded.payload)
+            payload = MessageToDict(pb,preserving_proto_field_name=True)
+            port = "TELEMETRY_APP"
 
+
+        parsed = {
+            "from": getattr(message_packet, "from"),
+            "to": getattr(message_packet, "to"),
+            "id": getattr(message_packet, "id"),
+            "port": port,
+            "data": payload
+        }
+        
+        print(json.dumps(parsed))
     except Exception as e:
-        print(f"Decryption failed: {str(e)}")
+        if (args.verbose):
+            print(f"Decryption failed: {str(e)}")
+
 
 def on_connect(client, userdata, flags, rc, properties):
-    if rc == 0:
-        print(f"Connected to {MQTT_BROKER} on topic {channel}")
-    else:
-        print(f"Failed to connect to MQTT broker with result code {str(rc)}")
+    if (args.verbose):
+        if rc == 0:
+            print(f"Connected to {args.url} on {args.topic}")
+        else:
+            print(f"Failed to connect to MQTT broker with result code {str(rc)}")
+
 
 def on_message(client, userdata, msg):
     service_envelope = mqtt_pb2.ServiceEnvelope()
     try:
         service_envelope.ParseFromString(msg.payload)
-        # print(service_envelope)
         message_packet = service_envelope.packet
-        # print(message_packet)
+        if message_packet.HasField("encrypted") and not message_packet.HasField("decoded"):
+            decode_encrypted(message_packet)
     except Exception as e:
-        print(f"Error parsing message: {str(e)}")
-        return
-    
-    if message_packet.HasField("encrypted") and not message_packet.HasField("decoded"):
-        decode_encrypted(message_packet)
+        if (args.verbose):
+            print(f"Error parsing message: {str(e)}")
+            return
 
-if __name__ == '__main__':
-    # client = mqtt.Client(client_id="", clean_session=True, userdata=None)
-    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        prog="Meshtastic MQTT ETL",
+        description="Connect to a meshtastic MQTT server and topic(s), then parse received packets to stdout",
+    )
+    parser.add_argument(
+        "--url", type=str, default=default_mqtt_url, help="MQTT server URL"
+    )
+    parser.add_argument(
+        "--port", type=int, default=default_mqtt_port, help="MQTT server port"
+    )
+    parser.add_argument(
+        "--user", type=str, default=default_mqtt_user, help="MQTT user"
+    )
+    parser.add_argument(
+        "--password", type=str, default=default_mqtt_password, help="MQTT password"
+    )
+    parser.add_argument(
+        "--id", type=str, default="meshdev", help="MQTT client id"
+    )
+    parser.add_argument(
+        "--key", type=str, default=default_encryption_key, help="meshtastic encryption key"
+    )
+    parser.add_argument(
+        "--verbose", action="store_true", help="enable verbose output"
+    )
+    parser.add_argument("--topic", nargs="+", default=default_mqtt_topic, type=str, help="MQTT topic(s)")
 
+    args = parser.parse_args()
+
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2, client_id=args.id,clean_session=False)
+    client.username_pw_set(username=args.user, password=args.password)
     client.on_connect = on_connect
-    client.username_pw_set(username=MQTT_USERNAME, password=MQTT_PASSWORD)
-    client.connect(MQTT_BROKER, MQTT_PORT, 60)
-
     client.on_message = on_message
 
-    subscribe_topic = f"{root_topic}{channel}/#"
+    client.connect(args.url, args.port, mqtt_keepalive)
 
-    client.subscribe(subscribe_topic, 0)
+    for topic in args.topic:
+        client.subscribe(topic, 0)
 
     while client.loop() == 0:
         pass
