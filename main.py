@@ -150,8 +150,6 @@ if __name__ == "__main__":
     client.on_connect = on_connect
     client.on_message = on_message
 
-    client.connect(args.url, args.port, mqtt_keepalive)
-
     try:
         client.connect(args.url, args.port, mqtt_keepalive)
         for topic in args.topic:
