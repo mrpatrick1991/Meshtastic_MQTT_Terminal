@@ -7,6 +7,7 @@ import base64
 import random
 import argparse
 import json
+import sys 
 
 default_mqtt_url = "mqtt.meshtastic.org"
 default_mqtt_password = "large4cats"
@@ -151,8 +152,11 @@ if __name__ == "__main__":
 
     client.connect(args.url, args.port, mqtt_keepalive)
 
-    for topic in args.topic:
-        client.subscribe(topic, 0)
-
-    while client.loop() == 0:
-        pass
+    try:
+        client.connect(args.url, args.port, mqtt_keepalive)
+        for topic in args.topic:
+            client.subscribe(topic, 0)
+        client.loop_forever()
+    except KeyboardInterrupt:
+        client.disconnect()
+        sys.exit()
