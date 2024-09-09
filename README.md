@@ -15,6 +15,9 @@ This project is forked from https://github.com/Bamorph/Meshtastic_MQTT_Terminal.
   --key KEY             meshtastic encryption key
   --verbose             enable verbose output
   --topic TOPIC [TOPIC ...]
-                        MQTT topic(s)```
+                        MQTT topic(s)
+```
+
+
 
 The default configuration subscribes to the two largest topics (`/msh/US/` and `/msh/EU_868/`) and uses the primary meshtastic encryption key, mqtt server, username and password. 
