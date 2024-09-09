@@ -6,6 +6,7 @@ This project is forked from https://github.com/Bamorph/Meshtastic_MQTT_Terminal.
 
 * `git clone https://github.com/mrpatrick1991/Meshtastic_MQTT_Terminal && cd Meshtastic_MQTT_Terminal`
 * `python -m venv .venv`
+* `source .venv/bin/activate`
 * `pip install -r requirements.txt`
 * `python main.py`
 
