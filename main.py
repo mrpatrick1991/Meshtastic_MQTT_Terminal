@@ -156,6 +156,7 @@ if __name__ == "__main__":
         for topic in args.topic:
             client.subscribe(topic, 0)
         client.loop_forever()
+        
     except KeyboardInterrupt:
         client.disconnect()
         sys.exit()
