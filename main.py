@@ -18,7 +18,6 @@ default_mqtt_port = 1883
 default_encryption_key = "1PG7OiApB1nwvP+rz05pAQ=="
 mqtt_keepalive = 60
 
-
 def decode_encrypted(message_packet):
     try:
         key_bytes = base64.b64decode(args.key.encode("ascii"))
